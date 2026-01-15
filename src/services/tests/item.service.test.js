@@ -1,46 +1,32 @@
-import { describe, jest } from "@jest/globals";
-import { fakeItemRows } from "../__fixtures__";
+import { describe, beforeEach, test, expect, jest } from "@jest/globals";
 import { ItemService } from "../item.service.js";
 
 describe("ItemService", () => {
-    let mockDb;
+    let repo;
     let service;
 
     beforeEach(() => {
-        mockDb = {
-            all: jest.fn(),
-            run: jest.fn()
+        repo = {
+            getItemsByUserId: jest.fn(),
+            getUnboughtItemsByUserId: jest.fn(),
+            insertItem: jest.fn(),
+            markItemBought: jest.fn(),
+            deleteItem: jest.fn()
         };
-        service = new ItemService(mockDb);
+
+        service = new ItemService(repo);
     });
 
     describe("getItems()", () => {
-        test("resolves rows from database", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(null, fakeItemRows);
-            });
+        test("returns items from repository", async () => {
+            const items = [{ id: 1 }, { id: 2 }];
+            repo.getItemsByUserId.mockResolvedValue(items);
 
-            await expect(service.getItems(10)).resolves.toEqual(fakeItemRows);
-
-            expect(mockDb.all).toHaveBeenCalledWith(
-                "SELECT * FROM items WHERE user_id = ?",
-                [10],
-                expect.any(Function)
-            );
+            await expect(service.getItems(1)).resolves.toEqual(items);
         });
 
-        test("resolves empty array when no rows returned", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(null, null);
-            });
-
-            await expect(service.getItems(99)).resolves.toEqual([]);
-        });
-
-        test("rejects on database error", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(new Error("DB error"));
-            });
+        test("propagates repository error", async () => {
+            repo.getItemsByUserId.mockRejectedValue(new Error("DB error"));
 
             await expect(service.getItems(1)).rejects.toThrow("DB error");
         });
@@ -48,86 +34,61 @@ describe("ItemService", () => {
 
     describe("getUnboughtItems()", () => {
         test("returns unbought items", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(null, fakeItemRows);
-            });
+            const items = [{ id: 1, bought: false }];
+            repo.getUnboughtItemsByUserId.mockResolvedValue(items);
 
-            await expect(service.getUnboughtItems(5))
-                .resolves.toEqual(fakeItemRows);
-
-            expect(mockDb.all).toHaveBeenCalledWith(
-                "SELECT * FROM items WHERE user_id = ? AND bought IS FALSE",
-                [5],
-                expect.any(Function)
-            );
+            await expect(service.getUnboughtItems(1)).resolves.toEqual(items);
         });
 
-        test("resolves empty array when no unbought items exist", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(null, []);
-            });
+        test("propagates repository error", async () => {
+            repo.getUnboughtItemsByUserId.mockRejectedValue(new Error("DB error"));
 
-            await expect(service.getUnboughtItems(5)).resolves.toEqual([]);
-        });
-
-        test("rejects on database error", async () => {
-            mockDb.all.mockImplementation((query, params, callback) => {
-                callback(new Error("DB error"));
-            });
-
-            await expect(service.getUnboughtItems(5))
-                .rejects.toThrow("DB error");
+            await expect(service.getUnboughtItems(1)).rejects.toThrow("DB error");
         });
     });
 
     describe("addItem()", () => {
-        test("resolves with inserted item id", async () => {
-            mockDb.run.mockImplementation(function (query, params, callback) {
-                callback.call({ lastID: 42 }, null);
-            });
+        test("returns object with id", async () => {
+            repo.insertItem.mockResolvedValue(5);
 
-            await expect(service.addItem(10, "eggs"))
-                .resolves.toEqual({ id: 42 });
-
-            expect(mockDb.run).toHaveBeenCalledWith(
-                "INSERT INTO items (user_id, name) VALUES (?, ?)",
-                [10, "eggs"],
-                expect.any(Function)
-            );
+            await expect(service.addItem(1, "Milk")).resolves.toEqual({ id: 5 });
         });
 
-        test("rejects on insert error", async () => {
-            mockDb.run.mockImplementation((query, params, callback) => {
-                callback(new Error("Insert failed"));
-            });
+        test("propagates repository error", async () => {
+            repo.insertItem.mockRejectedValue(new Error("Insert failed"));
 
-            await expect(service.addItem(10, "eggs"))
+            await expect(service.addItem(1, "Milk"))
                 .rejects.toThrow("Insert failed");
         });
     });
 
     describe("markBought()", () => {
-        test("resolves with number of affected rows", async () => {
-            mockDb.run.mockImplementation(function (query, params, callback) {
-                callback.call({ changes: 1 }, null);
-            });
+        test("returns changes count", async () => {
+            repo.markItemBought.mockResolvedValue(1);
 
-            await expect(service.markBought(7)).resolves.toEqual({ changes: 1 });
-
-            expect(mockDb.run).toHaveBeenCalledWith(
-                "UPDATE items SET bought = TRUE WHERE id = ?",
-                [7],
-                expect.any(Function)
-            );
+            await expect(service.markBought(3)).resolves.toEqual({ changes: 1 });
         });
 
-        test("rejects on update error", async () => {
-            mockDb.run.mockImplementation((query, params, callback) => {
-                callback(new Error("Update failed"));
-            });
+        test("propagates repository error", async () => {
+            repo.markItemBought.mockRejectedValue(new Error("Update failed"));
 
-            await expect(service.markBought(7))
+            await expect(service.markBought(3))
                 .rejects.toThrow("Update failed");
+        });
+    });
+
+    describe("deleteItem()", () => {
+        test("returns changes count", async () => {
+            repo.deleteItem.mockResolvedValue(1);
+
+            await expect(service.deleteItem(3)).resolves.toEqual({ changes: 1 });
+        });
+
+        test("propagates repository error", async () => {
+            repo.deleteItem.mockRejectedValue(new Error("Delete failed"));
+
+            await expect(service.deleteItem(3))
+                .rejects.toThrow("Delete failed");
         });
     });
 });

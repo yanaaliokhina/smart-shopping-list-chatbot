@@ -1,2 +1,2 @@
-export { UserService } from "../services/user.service.js";
-export { ItemService } from "../services/item.service.js";
+export { UserService } from "./user.service.js";
+export { ItemService } from "./item.service.js";

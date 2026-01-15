@@ -2,11 +2,15 @@ import TelegramBot from "node-telegram-bot-api";
 import { loadEnv } from "../utils/env.js";
 import { db } from "../db/index.js";
 import { UserService, ItemService } from "../services/index.js";
+import { UserRepository, ItemRepository } from "../repositories/index.js";
 import { TelegramBotCommandHandler } from "./handler.js";
 
 export function initBot() {
-    const userService = new UserService(db);
-    const itemService = new ItemService(db);
+    const userRepo = new UserRepository(db);
+    const itemRepo = new ItemRepository(db);
+
+    const userService = new UserService(userRepo);
+    const itemService = new ItemService(itemRepo);
 
     const { botToken } = loadEnv();
     const bot = new TelegramBot(botToken, { polling: true });

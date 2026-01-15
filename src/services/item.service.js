@@ -1,80 +1,28 @@
 export class ItemService {
-    constructor(db) {
-        this.db = db;
+    constructor(itemRepository) {
+        this.itemRepository = itemRepository;
     }
 
     getItems(userId) {
-        return new Promise((resolve, reject) => {
-            this.db.all(
-                "SELECT * FROM items WHERE user_id = ?",
-                [userId],
-                (err, rows) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve(rows ?? []);
-                }
-            );
-        });
+        return this.itemRepository.getItemsByUserId(userId);
     }
 
     getUnboughtItems(userId) {
-        return new Promise((resolve, reject) => {
-            this.db.all(
-                "SELECT * FROM items WHERE user_id = ? AND bought IS FALSE",
-                [userId],
-                (err, rows) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve(rows ?? []);
-                }
-            );
-        });
+        return this.itemRepository.getUnboughtItemsByUserId(userId);
     }
 
-    addItem(userId, name) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                "INSERT INTO items (user_id, name) VALUES (?, ?)",
-                [userId, name],
-                function (err) {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve({ id: this?.lastID });
-                }
-            );
-        });
+    async addItem(userId, name) {
+        const id = await this.itemRepository.insertItem(userId, name);
+        return { id };
     }
 
-    markBought(itemId) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                "UPDATE items SET bought = TRUE WHERE id = ?",
-                [itemId],
-                function (err) {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve({ changes: this?.changes });
-                }
-            );
-        });
+    async markBought(itemId) {
+        const changes = await this.itemRepository.markItemBought(itemId);
+        return { changes };
     }
 
-    deleteItem(itemId) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
-                "DELETE FROM items WHERE id = ?",
-                [itemId],
-                function (err) {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve({ changes: this.changes });
-                }
-            );
-        });
+    async deleteItem(itemId) {
+        const changes = await this.itemRepository.deleteItem(itemId);
+        return { changes };
     }
 }
