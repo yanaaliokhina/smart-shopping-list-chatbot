@@ -5,6 +5,7 @@ import {
     TELEGRAM_BOT_ADD_ITEMS_MENU,
     TELEGRAM_BOT_CANCEL_ADD_ITEMS_MENU_ITEM,
     TELEGRAM_BOT_CANCEL_MARK_ITEMS_BOUGHT_MENU_ITEM,
+    TELEGRAM_BOT_DELETE_ITEMS_MENU_ITEM,
     MENU_ITEM_ERROR,
 } from "./constants.js";
 
@@ -25,7 +26,7 @@ export class TelegramBotCommandHandler {
 
             this.bot.sendMessage(
                 chatId,
-                "🛒 *Welcome to Shopping List this.bot!*\n\nWhat would you like to do?",
+                "🛒 *Welcome to Shopping List Bot!*\n\nWhat would you like to do?",
                 { parse_mode: "Markdown", ...TELEGRAM_BOT_MAIN_MENU }
             );
         } catch (error) {
@@ -75,6 +76,10 @@ export class TelegramBotCommandHandler {
             }
             case TELEGRAM_BOT_CANCEL_MARK_ITEMS_BOUGHT_MENU_ITEM: {
                 await this.handleMarkItemsBoughtCommand(msg);
+                break;
+            }
+            case TELEGRAM_BOT_DELETE_ITEMS_MENU_ITEM: {
+                await this.handleDeleteItemsCommand(msg);
                 break;
             }
             default:
@@ -220,45 +225,110 @@ export class TelegramBotCommandHandler {
         const chatId = message.chat.id;
 
         try {
-            const [, itemId] = data.split("_");
-
             if (query.data === "disabled") {
                 return this.bot.answerCallbackQuery(query.id, {
-                    text: "Already marked as bought ✅",
+                    text: "Already processes",
                     show_alert: false
                 });
             }
 
-            await this.itemService.markBought(itemId);
-
-            const originalKeyboard = message.reply_markup.inline_keyboard;
-            const updatedKeyboard = originalKeyboard.map(row =>
-                row.map(button => {
-                    if (button.callback_data === `buy_${itemId}`) {
-                        return {
-                            text: "✅ Bought",
-                            callback_data: "disabled"
-                        };
-                    }
-
-                    return button;
-                })
-            );
-
-            this.bot.editMessageReplyMarkup(
-                { inline_keyboard: updatedKeyboard },
-                {
-                    chat_id: chatId,
-                    message_id: message.message_id
-                }
-            );
+            if (data.startsWith("delete_")) {
+                await this.handleDeleteItemCallbackQuery(query);
+            } else if (data.startsWith("buy_")) {
+                await this.handleMarkItemAsBoughtCallbackQuery(query);
+            }
         } catch (error) {
             console.error("handleCallbackQuery failed:", {
                 error,
-                user: msg.from.id
+                user: message.from.id
             });
 
             await this.bot.sendMessage(chatId, MENU_ITEM_ERROR);
         }
+    }
+
+    async handleDeleteItemsCommand(msg) {
+        const chatId = msg.chat.id;
+
+        try {
+            const userId = await this.userService.getOrCreateUser(msg.from.id);
+            const items = await this.itemService.getItems(userId);
+
+            if (!items.length) {
+                return this.bot.sendMessage(
+                    chatId,
+                    "🛍️ Your list is empty!",
+                    TELEGRAM_BOT_MAIN_MENU
+                );
+            }
+
+            this.bot.sendMessage(chatId, "Select items to delete:", {
+                reply_markup: {
+                    inline_keyboard: items.map(i => [
+                        { text: `🗑️ ${i.name}`, callback_data: `delete_${i.id}` }
+                    ])
+                }
+            });
+        } catch (error) {
+            console.error("handleDeleteItemsCommand failed:", error);
+
+            await this.bot.sendMessage(chatId, MENU_ITEM_ERROR);
+        }
+    }
+
+    async handleDeleteItemCallbackQuery(query) {
+        const { message, data } = query;
+        const [, itemId] = data.split("_");
+
+        await this.itemService.deleteItem(itemId);
+
+        const updatedKeyboard =
+            message.reply_markup.inline_keyboard.map(row =>
+                row.map(button => {
+                    if (button.callback_data === `delete_${itemId}`) {
+                        return {
+                            text: "✅ Deleted",
+                            callback_data: "disabled"
+                        };
+                    }
+                    return button;
+                })
+            );
+
+        this.bot.editMessageReplyMarkup(
+            { inline_keyboard: updatedKeyboard },
+            {
+                chat_id: message.chat.id,
+                message_id: message.message_id
+            }
+        );
+    }
+
+    async handleMarkItemAsBoughtCallbackQuery(query) {
+        const { message, data } = query;
+        const [, itemId] = data.split("_");
+
+        await this.itemService.markBought(itemId);
+
+        const updatedKeyboard = message.reply_markup.inline_keyboard.map(row =>
+            row.map(button => {
+                if (button.callback_data === `buy_${itemId}`) {
+                    return {
+                        text: "✅ Bought",
+                        callback_data: "disabled"
+                    };
+                }
+
+                return button;
+            })
+        );
+
+        this.bot.editMessageReplyMarkup(
+            { inline_keyboard: updatedKeyboard },
+            {
+                chat_id: message.chat.id,
+                message_id: message.message_id
+            }
+        );
     }
 }

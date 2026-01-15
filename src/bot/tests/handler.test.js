@@ -27,7 +27,8 @@ describe("TelegramBotCommandHandler", () => {
             getItems: jest.fn(),
             getUnboughtItems: jest.fn(),
             addItem: jest.fn(),
-            markBought: jest.fn()
+            markBought: jest.fn(),
+            deleteItem: jest.fn(),
         };
 
         bot = {
@@ -196,11 +197,11 @@ describe("TelegramBotCommandHandler", () => {
         });
     });
 
-    describe("handleCallbackQuery()", () => {
+    describe("handleMarkItemAsBoughtCallbackQuery()", () => {
         test("marks item as bought and updates button", async () => {
             itemService.markBought.mockResolvedValue();
 
-            await handler.handleCallbackQuery({
+            await handler.handleMarkItemAsBoughtCallbackQuery({
                 id: "cb1",
                 data: "buy_5",
                 message: {
@@ -219,6 +220,19 @@ describe("TelegramBotCommandHandler", () => {
         });
 
         test("handles disabled callback without updating DB", async () => {
+            await handler.handleCallbackQuery({ // TODO
+                id: "cb1",
+                data: "disabled",
+                message: { chat: { id: 100 } }
+            });
+
+            expect(bot.answerCallbackQuery).toHaveBeenCalled();
+            expect(itemService.markBought).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("handleDeleteItemCallbackQuery()", () => {
+        test("handles disabled callback without updating DB", async () => {
             await handler.handleCallbackQuery({
                 id: "cb1",
                 data: "disabled",
@@ -227,6 +241,74 @@ describe("TelegramBotCommandHandler", () => {
 
             expect(bot.answerCallbackQuery).toHaveBeenCalled();
             expect(itemService.markBought).not.toHaveBeenCalled();
+        });
+
+        test("deletes item and disables only clicked button", async () => {
+            await handler.handleDeleteItemCallbackQuery({
+                id: "cb1",
+                data: "delete_1",
+                message: {
+                    chat: { id: 100 },
+                    message_id: 10,
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "🗑️ Milk", callback_data: "delete_1" }],
+                            [{ text: "🗑️ Bread", callback_data: "delete_2" }]
+                        ]
+                    }
+                }
+            });
+
+            expect(itemService.deleteItem).toHaveBeenCalledWith("1");
+
+            expect(bot.editMessageReplyMarkup).toHaveBeenCalledWith(
+                {
+                    inline_keyboard: [
+                        [{ text: "✅ Deleted", callback_data: "disabled" }],
+                        [{ text: "🗑️ Bread", callback_data: "delete_2" }]
+                    ]
+                },
+                {
+                    chat_id: 100,
+                    message_id: 10
+                }
+            );
+        });
+    });
+
+    describe("handleDeleteItemsCommand()", () => {
+        test("shows message when no unbought items exist", async () => {
+            userService.getOrCreateUser.mockResolvedValue(1);
+            itemService.getItems.mockResolvedValue([]);
+
+            await handler.handleDeleteItemsCommand(baseMsg);
+
+            expect(bot.sendMessage).toHaveBeenCalledWith(
+                100,
+                "🛍️ Your list is empty!",
+                TELEGRAM_BOT_MAIN_MENU
+            );
+        });
+
+        test("shows inline keyboard with items", async () => {
+            userService.getOrCreateUser.mockResolvedValue(1);
+            itemService.getItems.mockResolvedValue([
+                { id: 1, name: "Milk" }
+            ]);
+
+            await handler.handleDeleteItemsCommand(baseMsg);
+
+            expect(bot.sendMessage).toHaveBeenCalledWith(
+                100,
+                "Select items to delete:",
+                expect.objectContaining({
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: "🗑️ Milk", callback_data: "delete_1" }
+                        ]]
+                    }
+                })
+            );
         });
     });
 });

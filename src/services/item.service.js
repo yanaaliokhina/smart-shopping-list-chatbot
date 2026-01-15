@@ -62,4 +62,19 @@ export class ItemService {
             );
         });
     }
+
+    deleteItem(itemId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                "DELETE FROM items WHERE id = ?",
+                [itemId],
+                function (err) {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve({ changes: this.changes });
+                }
+            );
+        });
+    }
 }
